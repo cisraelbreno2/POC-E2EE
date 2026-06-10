@@ -1,0 +1,158 @@
+version: '3.8'
+
+services:
+  postgres_keys:
+    image: postgres:16
+    container_name: e2ee-postgres-keys
+    environment:
+      POSTGRES_DB: keys_db
+      POSTGRES_USER: e2ee
+      POSTGRES_PASSWORD: e2ee
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2ee -d keys_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_keys_data:/var/lib/postgresql/data
+
+  postgres_messages:
+    image: postgres:16
+    container_name: e2ee-postgres-messages
+    environment:
+      POSTGRES_DB: messages_db
+      POSTGRES_USER: e2ee
+      POSTGRES_PASSWORD: e2ee
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2ee -d messages_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_messages_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: e2ee-redis
+    ports:
+      - "6379:6379"
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: e2ee-zipkin
+    ports:
+      - "9411:9411"
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: e2ee-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+
+  migrate_keys:
+    image: migrate/migrate
+    depends_on:
+      postgres_keys:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations/keys:/migrations
+    command: -path /migrations -database "postgres://e2ee:e2ee@postgres_keys:5432/keys_db?sslmode=disable" up
+
+  migrate_messages:
+    image: migrate/migrate
+    depends_on:
+      postgres_messages:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations/messages:/migrations
+    command: -path /migrations -database "postgres://e2ee:e2ee@postgres_messages:5432/messages_db?sslmode=disable" up
+
+  keys_service:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: dev
+    container_name: e2ee-keys-service
+    command: go run ./keys-service/cmd/main.go
+    depends_on:
+      migrate_keys:
+        condition: service_completed_successfully
+      zipkin:
+        condition: service_started
+    environment:
+      KEYS_SERVICE_PORT: "50051"
+      KEYS_DB_DSN: "postgres://e2ee:e2ee@postgres_keys:5432/keys_db?sslmode=disable"
+      JWT_SECRET: "minha_chave_super_secreta_jwt"
+      ZIPKIN_URL: "http://zipkin:9411/api/v2/spans"
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./:/workspace
+
+  messages_service:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: dev
+    container_name: e2ee-messages-service
+    command: go run ./messages-service/cmd/main.go
+    depends_on:
+      migrate_messages:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_started
+      zipkin:
+        condition: service_started
+    environment:
+      MESSAGES_SERVICE_PORT: "50052"
+      MESSAGES_DB_DSN: "postgres://e2ee:e2ee@postgres_messages:5432/messages_db?sslmode=disable"
+      KAFKA_BROKERS: "kafka:9092"
+      ZIPKIN_URL: "http://zipkin:9411/api/v2/spans"
+    ports:
+      - "50052:50052"
+    volumes:
+      - ./:/workspace
+
+  api_gateway:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: dev
+    container_name: e2ee-api-gateway
+    command: go run ./api-gateway/cmd/main.go
+    depends_on:
+      - keys_service
+      - messages_service
+      - redis
+      - kafka
+      - zipkin
+    environment:
+      API_GATEWAY_PORT: "8080"
+      KEYS_SERVICE_ADDR: "keys_service:50051"
+      MESSAGES_SERVICE_ADDR: "messages_service:50052"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "minha_chave_super_secreta_jwt"
+      KAFKA_BROKERS: "kafka:9092"
+      ZIPKIN_URL: "http://zipkin:9411/api/v2/spans"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/workspace
+
+volumes:
+  postgres_keys_data:
+  postgres_messages_data:

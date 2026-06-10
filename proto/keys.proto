@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package keys;
+option go_package = "e2ee/pkg/pb/keyspb";
+
+service KeysService {
+    rpc RegisterUser (RegisterUserRequest) returns (RegisterUserResponse);
+    rpc GetPublicKey (GetPublicKeyRequest) returns (GetPublicKeyResponse);
+}
+
+message RegisterUserRequest {
+    string id = 1;
+    string identity_public_key = 2;
+    string dh_public_key = 3;
+}
+
+message RegisterUserResponse {
+    string token = 1;
+}
+
+message GetPublicKeyRequest {
+    string id = 1;
+}
+
+message GetPublicKeyResponse {
+    string id = 1;
+    string identity_public_key = 2;
+    string dh_public_key = 3;
+}

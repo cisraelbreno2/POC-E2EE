@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package messages;
+option go_package = "e2ee/pkg/pb/messagespb";
+
+service MessagesService {
+    rpc SendMessage (SendMessageRequest) returns (SendMessageResponse);
+    rpc ListMessages (ListMessagesRequest) returns (ListMessagesResponse);
+}
+
+message SendMessageRequest {
+    string from = 1;
+    string to = 2;
+    string ephemeral_public_key = 3;
+    string encrypted_payload = 4;
+    string signature = 5;
+}
+
+message SendMessageResponse {
+    bool success = 1;
+}
+
+message ListMessagesRequest {
+    string to = 1;
+}
+
+message EncryptedMessage {
+    int64 id = 1;
+    string from = 2;
+    string to = 3;
+    string ephemeral_public_key = 4;
+    string encrypted_payload = 5;
+    string signature = 6;
+    string created_at = 7;
+}
+
+message ListMessagesResponse {
+    repeated EncryptedMessage messages = 1;
+}
