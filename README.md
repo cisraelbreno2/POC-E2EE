@@ -61,13 +61,13 @@ graph TD
 
 ## Segurança Criptográfica
 
-A arquitetura criptográfica foi migrada de algoritmos RSA tradicionais para a moderna **Criptografia de Curva Elíptica (ECC)**, garantindo maior segurança com chaves menores e computações significativamente mais eficientes.
+A arquitetura criptográfica foi construída utilizando **Criptografia de Curva Elíptica (ECC)**, garantindo maior segurança com chaves menores e computações significativamente mais eficientes.
 
 Todo o processamento criptográfico ocorre estritamente nos dispositivos clientes (ou na camada simulada `pkg/clientcrypto`). O fluxo utiliza **ECDHE (Elliptic Curve Diffie-Hellman Ephemeral)**:
 
 ### Diagrama de Fluxo E2EE
 
-Abaixo está o diagrama do processo de comunicação segura entre Alice e Bob, cobrindo o envio da mensagem original e a posterior resposta de Bob:
+Abaixo está o diagrama do processo de comunicação segura entre Alice e Bob (que pode ser simulado. Mais abaixo eu explico como), cobrindo o envio da mensagem original e a posterior resposta de Bob:
 
 ```mermaid
 sequenceDiagram
@@ -211,7 +211,7 @@ proto/              Contratos gRPC e definições do protocolo em Protobuf (.pro
 
 ## Decisões de Arquitetura & Trade-Offs
 
-- **Kafka vs. gRPC síncrono para gravação**: O fluxo clássico exigia que o Gateway esperasse a resposta do banco de dados do `messages-service` antes de responder ao cliente WebSocket. Ao introduzir o Kafka, as mensagens são despachadas na fila instantaneamente e salvas em segundo plano. Isso aumenta drasticamente o throughput e garante que instabilidades temporárias no banco de dados não derrubem a entrega de mensagens em tempo real.
+- **Kafka vs. gRPC síncrono para gravação**: A minha primeira ideia com o fluxo exigia que o Gateway esperasse a resposta do banco de dados do `messages-service` antes de responder ao cliente WebSocket. Ao introduzir o Kafka, as mensagens são despachadas na fila instantaneamente e salvas em segundo plano. Isso aumenta drasticamente o throughput e garante que instabilidades temporárias no banco de dados não derrubem a entrega de mensagens em tempo real.
 - **ECDHE Curve25519 vs. Signal Protocol Completo**: O Signal Protocol é o estado da arte para chats, porém requer a implementação da máquina de estados do *Double Ratchet* com rotação constante de chaves a cada resposta. Para esta POC, o **ECDHE (com chaves efêmeras geradas pelo remetente)** foi selecionado por implementar perfeitamente a propriedade de *Perfect Forward Secrecy* sem trazer o excesso de complexidade e dependências externas que poderiam obscurecer o propósito demonstrativo do código.
 - **Curvas Ed25519 + X25519 vs. RSA**: Chaves RSA 3072-bit possuem custo computacional alto e payloads grandes. O uso de chaves ECC de 256 bits reduz o consumo de banda de rede ao transacionar chaves públicas e assinaturas digitais, além de executar operações matemáticas muito mais rápidas no cliente.
 - **Rastreamento Distribuído**: Em sistemas de mensageria assíncrona, debugar onde um pacote se perdeu (se no gateway, no broker ou no worker) é extremamente complexo. A instrumentação OpenTelemetry resolve isso correlacionando todas as etapas sob o mesmo ID de rastreamento.
